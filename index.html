@@ -2,63 +2,291 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Карта «интересных мест» — рельеф + спутник + топо + POI (v2)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>Карта рельефа и интересных мест</title>
 
-  <!-- Leaflet (официальные SRI) -->
-  <link rel="stylesheet"
-        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-        crossorigin=""/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-          crossorigin=""></script>
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 
   <style>
-    html, body { height:100%; margin:0; }
+    * { -webkit-tap-highlight-color: transparent; }
+    html, body { height:100%; margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
     #map { position:absolute; inset:0; background:#e6e7e9; }
+
+    /* Легенда - компактнее на мобильных */
     .legend {
-      position:absolute; right:12px; top:12px; z-index:1000;
-      background:#fff; padding:10px 12px; border-radius:12px;
-      box-shadow:0 6px 18px rgba(0,0,0,.15);
-      font:13px/1.35 system-ui, -apple-system,"Segoe UI",Roboto,Arial,"Noto Sans",sans-serif;
-      max-width:260px;
+      position:absolute; right:12px; top:12px; z-index:999;
+      background:rgba(255,255,255,0.95); padding:10px 12px; border-radius:12px;
+      box-shadow:0 4px 16px rgba(0,0,0,.12);
+      font:13px/1.35 system-ui,sans-serif;
+      max-width:240px; backdrop-filter:blur(8px);
+      transition:transform 0.2s ease, opacity 0.2s ease;
     }
-    .legend .bar { width:18px; height:260px; border-radius:6px; background:linear-gradient(to top,
-      #1f78b4,#2ca25f,#fee08b,#fdae61,#d73027); margin-right:10px; }
+    .legend.hidden { transform:translateX(120%); opacity:0; pointer-events:none; }
+    .legend .bar {
+      width:16px; height:180px; border-radius:6px;
+      background:linear-gradient(to top,#1f78b4,#2ca25f,#fee08b,#fdae61,#d73027);
+      margin-right:8px; box-shadow:0 2px 6px rgba(0,0,0,.1);
+    }
     .legend .row { display:flex; align-items:center; }
-    .legend .ticks { margin-left:8px; }
-    .legend .ticks div { height:26px; display:flex; align-items:center; }
+    .legend .ticks { margin-left:6px; font-size:11px; color:#555; }
+    .legend .ticks div { height:18px; display:flex; align-items:center; }
+    .legend h4 { margin:0 0 8px; font-size:14px; font-weight:600; color:#333; }
+    #range { margin-top:8px; color:#666; font-size:11px; font-weight:500; }
+
+    /* Badge внизу - меньше и читаемее */
     .badge {
-      position:absolute; left:12px; bottom:12px; z-index:1000;
-      background:rgba(255,255,255,.9); padding:6px 10px; border-radius:10px; font-size:12px;
+      position:absolute; left:12px; bottom:80px; z-index:998;
+      background:rgba(255,255,255,.92); padding:6px 10px; border-radius:8px;
+      font-size:10px; color:#666; backdrop-filter:blur(6px);
+      box-shadow:0 2px 8px rgba(0,0,0,.08); line-height:1.4;
+      max-width:calc(100vw - 24px);
     }
-    .leaflet-popup-content { margin:8px 12px; }
+
+    /* Desktop контролы */
     .ctrl-box {
-      background:#fff; padding:10px 12px; border-radius:10px; box-shadow:0 4px 14px rgba(0,0,0,.15);
-      font:13px/1.35 system-ui, -apple-system,"Segoe UI",Roboto,Arial,"Noto Sans",sans-serif;
-      max-width:340px;
+      background:rgba(255,255,255,0.95); padding:12px 14px; border-radius:12px;
+      box-shadow:0 4px 16px rgba(0,0,0,.12);
+      font:13px/1.35 system-ui,sans-serif; max-width:300px;
+      backdrop-filter:blur(8px);
     }
-    .ctrl-box label { user-select:none; display:flex; gap:6px; align-items:center; }
-    .grp { margin-top:8px; }
-    .grp b { display:block; margin-bottom:4px; }
-    .cols { display:grid; grid-template-columns: 1fr 1fr; gap:6px 14px; }
-    .blend-multiply { mix-blend-mode: multiply; }
+    .ctrl-box label {
+      user-select:none; display:flex; gap:6px; align-items:center;
+      padding:4px 0; cursor:pointer;
+    }
+    .ctrl-box input[type="checkbox"],
+    .ctrl-box input[type="radio"] {
+      width:18px; height:18px; cursor:pointer;
+    }
+    .grp { margin-top:10px; padding-top:10px; border-top:1px solid #e5e7eb; }
+    .grp:first-child { margin-top:0; padding-top:0; border-top:none; }
+    .grp b { display:block; margin-bottom:6px; font-size:13px; color:#333; }
+    .cols { display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; }
+
+    /* Мобильные элементы */
+    .mobile-only { display:none; }
+
+    /* FAB геолокации */
+    .fab {
+      position:fixed; right:16px; bottom:92px;
+      width:52px; height:52px; border-radius:26px; border:0;
+      box-shadow:0 4px 14px rgba(0,0,0,.18);
+      background:#fff; font-size:22px; z-index:1000;
+      cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .fab:active { transform:scale(0.95); box-shadow:0 2px 8px rgba(0,0,0,.18); }
+
+    /* Нижняя панель — компактная 2×2 плитка (mobile) */
+.bottom-bar {
+  position:fixed; left:12px; right:auto; bottom:12px; z-index:1001;
+  width:min(340px, calc(100vw - 24px));
+  padding:10px; border-radius:14px;
+  background:rgba(255,255,255,.96); backdrop-filter:saturate(1.2) blur(10px);
+  box-shadow:0 10px 24px rgba(0,0,0,.16);
+  display:grid; grid-template-columns:repeat(2, 1fr); grid-auto-rows:minmax(48px, auto); gap:8px;
+}
+.bb-btn {
+  min-height:48px; border-radius:12px; border:1px solid #e5e7eb;
+  background:#fff; font:12px/1.2 system-ui,sans-serif;
+  cursor:pointer; transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:2px; padding:8px 6px;
+}
+.bb-btn .icon { font-size:20px; line-height:1; }
+.bb-btn .label { font-size:11px; font-weight:600; color:#555; }
+.bb-btn:active { transform:scale(0.97); }
+.bb-btn.active { border-color:#2563eb; background:#eff6ff; box-shadow:0 0 0 2px rgba(37,99,235,.08) inset; }
+.bb-btn.active .label { color:#2563eb; }
+
+/* Шторка настроек - улучшенная */
+    .sheet {
+      position:fixed; left:0; right:0; bottom:0; z-index:1002;
+      background:#fff; border-top-left-radius:20px; border-top-right-radius:20px;
+      box-shadow:0 -8px 32px rgba(0,0,0,.15);
+      transform:translateY(calc(100% + 20px)); transition:transform .3s cubic-bezier(0.4, 0, 0.2, 1);
+      max-height:70vh; overflow-y:auto;
+    }
+    .sheet.open { transform:translateY(0); }
+    .sheet-handle {
+      width:40px; height:4px; border-radius:2px; background:#cbd5e1;
+      margin:12px auto 8px; cursor:pointer;
+    }
+    .sheet-content {
+      padding:0 16px calc(16px + env(safe-area-inset-bottom));
+      font:14px/1.4 system-ui,sans-serif;
+    }
+    .sheet-content h3 {
+      margin:8px 0 16px; font-size:18px; font-weight:600; color:#111;
+      padding-bottom:8px; border-bottom:2px solid #e5e7eb;
+    }
+    .sheet-section { margin-bottom:20px; }
+    .sheet-section h4 {
+      margin:0 0 10px; font-size:13px; font-weight:600;
+      color:#666; text-transform:uppercase; letter-spacing:0.5px;
+    }
+    .sheet-row {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:10px 0; gap:12px; border-bottom:1px solid #f3f4f6;
+    }
+    .sheet-row:last-child { border-bottom:none; }
+    .sheet-row label { flex:1; cursor:pointer; font-size:14px; color:#333; }
+    .sheet-row input[type="checkbox"] { width:20px; height:20px; cursor:pointer; }
+    .sheet-row input[type="range"] { flex:1; }
+    .range-value {
+      min-width:40px; text-align:right; font-weight:600;
+      color:#2563eb; font-size:14px;
+    }
+
+    /* Индикатор загрузки POI */
+    .loading-indicator {
+      position:absolute; top:20px; left:50%; transform:translateX(-50%);
+      background:rgba(0,0,0,.75); color:#fff; padding:8px 16px;
+      border-radius:20px; font-size:13px; z-index:1000;
+      backdrop-filter:blur(4px); box-shadow:0 4px 12px rgba(0,0,0,.2);
+      opacity:0; transition:opacity 0.2s ease; pointer-events:none;
+    }
+    .loading-indicator.show { opacity:1; }
+
+    /* Улучшенные попапы */
+    .leaflet-popup-content-wrapper {
+      border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,.15);
+    }
+    .leaflet-popup-content {
+      margin:12px 14px; font:14px/1.5 system-ui,sans-serif; min-width:160px;
+    }
+    .leaflet-popup-content b { color:#111; font-weight:600; }
+
+    .blend-multiply { mix-blend-mode:multiply; }
+
+    /* Адаптация для мобильных */
+    @media (max-width: 768px) {
+      .ctrl-box { display:none !important; }
+      .mobile-only { display:block; }
+      .legend { right:8px; top:8px; padding:8px 10px; max-width:200px; }
+      .legend .bar { width:14px; height:140px; }
+      .legend .ticks { font-size:10px; }
+      .legend h4 { font-size:12px; margin-bottom:6px; }
+      #range { font-size:10px; margin-top:6px; }
+      .badge { bottom:200px; font-size:9px; left:8px; right:8px; max-width:none; display: none; }
+      .fab { right:12px; bottom:84px; width:48px; height:48px; }
+      .leaflet-popup-content { font-size:13px; }
+      .bottom-bar { width:min(200px, calc(100vw - 16px)); padding:8px; gap:6px; }
+    }
+
+    @media (max-width: 380px) {
+      .bb-btn .label { font-size:10px; }
+      .bb-btn { min-height:44px; padding:4px 2px; }
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
 
+  <!-- Индикатор загрузки POI -->
+  <div id="loadingIndicator" class="loading-indicator">
+    Загрузка точек интереса...
+  </div>
+
+  <!-- Мобильная панель (4 основные кнопки) -->
+  <div class="bottom-bar" id="bottomBar">
+    <button id="btnLayers" class="bb-btn" aria-label="Слои">
+      <span class="icon">🗺️</span>
+      <span class="label">Слои</span>
+    </button>
+    <button id="btnRelief" class="bb-btn active" aria-label="Рельеф">
+      <span class="icon">⛰️</span>
+      <span class="label">Рельеф</span>
+    </button>
+    <button id="btnPOI" class="bb-btn active" aria-label="POI">
+      <span class="icon">📍</span>
+      <span class="label">Места</span>
+    </button>
+    <button id="btnMore" class="bb-btn" aria-label="Еще">
+      <span class="icon">⚙️</span>
+      <span class="label">Еще</span>
+    </button>
+  </div>
+
+  <!-- FAB геолокации -->
+  <button id="geoFab" class="fab mobile-only" title="Моё местоположение" aria-label="Геолокация">
+    📍
+  </button>
+
+  <!-- Шторка настроек -->
+  <div id="sheet" class="sheet mobile-only" aria-hidden="true">
+    <div class="sheet-handle" id="sheetHandle"></div>
+    <div class="sheet-content">
+      <h3>Настройки карты</h3>
+
+      <div class="sheet-section">
+        <h4>Базовая карта</h4>
+        <div class="sheet-row">
+          <label><input type="radio" name="baseMobile" value="osm" checked> Стандартная карта</label>
+        </div>
+        <div class="sheet-row">
+          <label><input type="radio" name="baseMobile" value="sat"> Спутник</label>
+        </div>
+        <div class="sheet-row">
+          <label><input type="radio" name="baseMobile" value="topo"> Топографическая</label>
+        </div>
+      </div>
+
+      <div class="sheet-section">
+        <h4>Прозрачность рельефа</h4>
+        <div class="sheet-row">
+          <input id="opacityRange" type="range" min="0" max="1" step="0.05" value="0.7">
+          <span class="range-value" id="opacityValue">70%</span>
+        </div>
+      </div>
+
+      <div class="sheet-section">
+        <h4>Дополнительные слои</h4>
+        <div class="sheet-row">
+          <label>Теневой рельеф</label>
+          <input type="checkbox" id="hillMobile">
+        </div>
+        <div class="sheet-row">
+          <label>Тропы и маршруты</label>
+          <input type="checkbox" id="trailsMobile">
+        </div>
+        <div class="sheet-row">
+          <label>Типы покрытий</label>
+          <input type="checkbox" id="landMobile">
+        </div>
+        <div class="sheet-row">
+          <label>Показать легенду</label>
+          <input type="checkbox" id="legendToggleMobile" checked>
+        </div>
+      </div>
+
+      <div class="sheet-section">
+        <h4>Диапазон высот</h4>
+        <div class="sheet-row">
+          <label>Фиксировать min/max</label>
+          <input type="checkbox" id="lockMobile">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Легенда -->
   <div class="legend" id="legend">
-    <div><b>Высота</b></div>
+    <h4>Высота над уровнем моря</h4>
     <div class="row">
       <div class="bar"></div>
       <div class="ticks" id="ticks"></div>
     </div>
-    <div id="range" style="margin-top:6px;color:#555"></div>
+    <div id="range"></div>
   </div>
 
-  <div class="badge">Рельеф: Terrarium (Mapzen) · База: © OpenStreetMap / Esri / OpenTopoMap · Тени: WMF Labs · Тропы: Waymarked · Landcover: ESA/EOX</div>
+  <div class="badge">
+    Рельеф: Terrarium (Mapzen)<br>
+    База: © OpenStreetMap / Esri / OpenTopoMap<br>
+    Тропы: Waymarked Trails · POI: OpenStreetMap
+  </div>
 
 <script>
 /* ================= ПАРАМЕТРЫ ================= */
@@ -69,32 +297,46 @@ let   locked = qs.get("lock") === '1';
 let   EMIN   = Number(qs.get("emin") || 0);
 let   EMAX   = Number(qs.get("emax") || 400);
 let   base   = (qs.get("base") === 'sat') ? 'sat' : (qs.get("base")==='topo'?'topo':'osm');
+let   reliefCurrentOpacity = 0.7;
 
 /* ================= КАРТА и БАЗЫ ================= */
-const map = L.map('map', { zoomControl: true }).setView(center, zoom);
+const map = L.map('map', {
+  zoomControl: true,
+  zoomSnap: 0.5,
+  zoomDelta: 0.5
+}).setView(center, zoom);
 
 const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution: '&copy; OpenStreetMap contributors', zIndex: 1
+  attribution: '&copy; OpenStreetMap', zIndex: 1, maxZoom: 19
 });
 
 const esri = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  { attribution: 'Imagery © Esri — Sources: Esri, Maxar, Earthstar Geographics, USDA, USGS, AeroGRID, IGN, and the GIS User Community', zIndex: 1 }
+  { attribution: '© Esri', zIndex: 1, maxZoom: 19 }
 );
 
 const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-  attribution: 'Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap (CC-BY-SA)', zIndex: 1
+  attribution: '© OpenTopoMap', zIndex: 1, maxZoom: 17
 });
 
 function setBase(v){
   [osm, esri, topo].forEach(l => map.removeLayer(l));
-  if (v==='sat') esri.addTo(map); else if (v==='topo') topo.addTo(map); else osm.addTo(map);
+  if (v==='sat') esri.addTo(map);
+  else if (v==='topo') topo.addTo(map);
+  else osm.addTo(map);
+  base = v;
 }
 setBase(base);
 
 /* ================= ЦВЕТА РЕЛЬЕФА ================= */
 function lerp(a,b,t){ return a + (b-a)*t; }
-function mix(c1,c2,t){ return [Math.round(lerp(c1[0],c2[0],t)), Math.round(lerp(c1[1],c2[1],t)), Math.round(lerp(c1[2],c2[2],t))]; }
+function mix(c1,c2,t){
+  return [
+    Math.round(lerp(c1[0],c2[0],t)),
+    Math.round(lerp(c1[1],c2[1],t)),
+    Math.round(lerp(c1[2],c2[2],t))
+  ];
+}
 const stops = [
   {t:0.00, c:[ 31,120,180]},
   {t:0.35, c:[ 44,162, 95]},
@@ -109,80 +351,211 @@ function colorFor(e, emin, emax){
   if (t >= 1) return stops[stops.length-1].c;
   for (let i=0;i<stops.length-1;i++){
     const a = stops[i], b = stops[i+1];
-    if (t >= a.t && t <= b.t){ const u = (t - a.t) / (b.t - a.t); return mix(a.c, b.c, u); }
+    if (t >= a.t && t <= b.t){
+      const u = (t - a.t) / (b.t - a.t);
+      return mix(a.c, b.c, u);
+    }
   }
   return stops[stops.length-1].c;
 }
 
 /* ================= TERRARIUM РЕЛЬЕФ ================= */
-const terrariumURL = (z,x,y) => `https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${z}/${x}/${y}.png`;
-const rawTiles = new Map();   // key -> Uint8ClampedArray (RGBA исходные пиксели)
-const tileStats = new Map();  // key -> {min,max}
-const tileCtx   = new Map();  // key -> CanvasRenderingContext2D
+const terrariumURL = (z,x,y) =>
+  `https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${z}/${x}/${y}.png`;
+const rawTiles = new Map();
+const tileStats = new Map();
+const tileCtx = new Map();
 
 const TerrariumLayer = L.GridLayer.extend({
   createTile: function (coords) {
-    const tile = L.DomUtil.create('canvas', 'leaflet-tile'); tile.width = tile.height = 256; const ctx = tile.getContext('2d');
-    const img = new Image(); img.crossOrigin = "anonymous"; img.referrerPolicy = "no-referrer"; img.src = terrariumURL(coords.z, coords.x, coords.y);
+    const tile = L.DomUtil.create('canvas', 'leaflet-tile');
+    tile.width = tile.height = 256;
+    const ctx = tile.getContext('2d');
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.referrerPolicy = "no-referrer";
+    img.src = terrariumURL(coords.z, coords.x, coords.y);
     const key = `${coords.z}/${coords.x}/${coords.y}`;
+
     img.onload = () => {
       try {
-        ctx.drawImage(img, 0, 0); const imgData = ctx.getImageData(0,0,256,256); const src = imgData.data;
+        ctx.drawImage(img, 0, 0);
+        const imgData = ctx.getImageData(0,0,256,256);
+        const src = imgData.data;
         let tmin = Infinity, tmax = -Infinity;
-        for (let i=0;i<src.length;i+=4){ const R=src[i], G=src[i+1], B=src[i+2]; const elev=(R*256+G+B/256)-32768; if (elev<tmin) tmin=elev; if (elev>tmax) tmax=elev; }
-        rawTiles.set(key, new Uint8ClampedArray(src)); tileStats.set(key, {min:tmin, max:tmax}); tileCtx.set(key, ctx);
-        recolorTile(key, EMIN, EMAX); scheduleRecolor();
-      } catch (e) { console.warn('Terrarium decode failed:', e, key); ctx.clearRect(0,0,256,256); }
+
+        for (let i=0;i<src.length;i+=4){
+          const R=src[i], G=src[i+1], B=src[i+2];
+          const elev=(R*256+G+B/256)-32768;
+          if (elev<tmin) tmin=elev;
+          if (elev>tmax) tmax=elev;
+        }
+
+        rawTiles.set(key, new Uint8ClampedArray(src));
+        tileStats.set(key, {min:tmin, max:tmax});
+        tileCtx.set(key, ctx);
+        recolorTile(key, EMIN, EMAX);
+        scheduleRecolor();
+      } catch (e) {
+        console.warn('Terrarium decode failed:', e, key);
+        ctx.clearRect(0,0,256,256);
+      }
     };
-    img.onerror = err => { console.warn('Terrarium tile error:', key, err); ctx.clearRect(0,0,256,256); };
+
+    img.onerror = err => {
+      console.warn('Terrarium tile error:', key, err);
+      ctx.clearRect(0,0,256,256);
+    };
+
     return tile;
   }
 });
-const reliefLayer = new TerrariumLayer({ opacity: 0.67 }); reliefLayer.addTo(map); reliefLayer.setZIndex(6);
-reliefLayer.on('tileunload', (ev)=>{ const key = `${ev.coords.z}/${ev.coords.x}/${ev.coords.y}`; rawTiles.delete(key); tileStats.delete(key); tileCtx.delete(key); });
 
-/* ================= ДОП. ОВЕРЛЕИ ================= */
-// Теневой рельеф (черно-белый), сверху базы, но под цветовым рельефом. Бленд: multiply.
+const reliefLayer = new TerrariumLayer({ opacity: reliefCurrentOpacity });
+reliefLayer.addTo(map);
+reliefLayer.setZIndex(6);
+
+reliefLayer.on('tileunload', (ev)=>{
+  const key = `${ev.coords.z}/${ev.coords.x}/${ev.coords.y}`;
+  rawTiles.delete(key);
+  tileStats.delete(key);
+  tileCtx.delete(key);
+});
+
+/* ================= ДОП. СЛ================= */
 const hillshade = L.tileLayer('https://tiles.wmflabs.org/hillshading/{z}/{x}/{y}.png', {
-  opacity: 0.6, zIndex: 5, className: 'blend-multiply',
-  attribution: 'Hillshade: SRTM/ASTER — WMF Labs'
+  opacity: 0.5, zIndex: 5, className: 'blend-multiply',
+  attribution: 'Hillshade: SRTM/ASTER'
 });
 
-// Сеть пешеходных маршрутов (красные линии), поверх всего
 const waymarked = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', {
-  opacity: 1.0, zIndex: 10,
-  attribution: 'Waymarked Trails (CC BY-SA) — hiking routes overlay'
+  opacity: 0.85, zIndex: 7,
+  attribution: 'Waymarked Trails'
 });
 
-// Типы покрытий (Landcover) — под цветовым рельефом
-const landcover = L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/WORLDCOVER_2021_19class/default/GoogleMapsCompatible/{z}/{y}/{x}.png', {
-  opacity: 0.45, zIndex: 4,
-  attribution: 'ESA WorldCover 2021 via EOX (CC BY 4.0)'
+const landcover = L.tileLayer(
+  'https://tiles.maps.eox.at/wmts/1.0.0/WORLDCOVER_2021_19class/default/GoogleMapsCompatible/{z}/{y}/{x}.png', {
+  opacity: 0.4, zIndex: 2, attribution: 'ESA WorldCover 2021'
 });
 
-/* ================= РЕМЕП ПО ВЬЮПОРТУ ================= */
-function visibleTileKeys(){ const z = map.getZoom(); const size=256, scale=1<<z; const b = map.getPixelBounds();
-  const minX=Math.floor(b.min.x/size), maxX=Math.floor(b.max.x/size); const minY=Math.floor(b.min.y/size), maxY=Math.floor(b.max.y/size);
-  const keys=[]; for (let x=minX;x<=maxX;x++){ for (let y=minY;y<=maxY;y++){ const xx=((x%scale)+scale)%scale; const yy=Math.min(Math.max(y,0),scale-1); keys.push(`${z}/${xx}/${yy}`); }} return keys; }
-function computeViewportRange(){ const keys = visibleTileKeys(); let vmin=Infinity, vmax=-Infinity, have=false;
-  for (const k of keys){ const st = tileStats.get(k); if (!st) continue; have=true; if (st.min<vmin) vmin=st.min; if (st.max>vmax) vmax=st.max; }
-  if (!have) return null; return {min:vmin, max:vmax}; }
-function recolorTile(key, emin, emax){ const raw=rawTiles.get(key), ctx=tileCtx.get(key); if(!raw||!ctx) return; const imgData=ctx.createImageData(256,256); const dst=imgData.data;
-  for (let i=0;i<raw.length;i+=4){ const R=raw[i], G=raw[i+1], B=raw[i+2]; const elev=(R*256+G+B/256)-32768; const [r,g,b]=colorFor(elev, EMIN, EMAX); dst[i]=r; dst[i+1]=g; dst[i+2]=b; dst[i+3]=170; }
-  ctx.putImageData(imgData, 0, 0); }
-function recolorVisible(){ if (!locked){ const range=computeViewportRange(); if (range){ EMIN=range.min; EMAX=range.max; updateLegend(); } } for (const k of visibleTileKeys()) recolorTile(k, EMIN, EMAX); }
-let recolorTimer=null; function scheduleRecolor(){ if (recolorTimer) cancelAnimationFrame(recolorTimer); recolorTimer=requestAnimationFrame(recolorVisible); }
-map.on('moveend zoomend', scheduleRecolor); scheduleRecolor();
+/* ================= РЕМАП ПО ВЬЮПОРТУ ================= */
+function visibleTileKeys(){
+  const z = map.getZoom();
+  const size=256, scale=1<<z;
+  const b = map.getPixelBounds();
+  const minX=Math.floor(b.min.x/size), maxX=Math.floor(b.max.x/size);
+  const minY=Math.floor(b.min.y/size), maxY=Math.floor(b.max.y/size);
+  const keys=[];
+  for (let x=minX;x<=maxX;x++){
+    for (let y=minY;y<=maxY;y++){
+      const xx=((x%scale)+scale)%scale;
+      const yy=Math.min(Math.max(y,0),scale-1);
+      keys.push(`${z}/${xx}/${yy}`);
+    }
+  }
+  return keys;
+}
+
+function computeViewportRange(){
+  const keys = visibleTileKeys();
+  let vmin=Infinity, vmax=-Infinity, have=false;
+  for (const k of keys){
+    const st = tileStats.get(k);
+    if (!st) continue;
+    have=true;
+    if (st.min<vmin) vmin=st.min;
+    if (st.max>vmax) vmax=st.max;
+  }
+  if (!have) return null;
+  return {min:vmin, max:vmax};
+}
+
+function recolorTile(key, emin, emax){
+  const raw = rawTiles.get(key), ctx = tileCtx.get(key);
+  if (!raw||!ctx) return;
+  const imgData = ctx.createImageData(256,256);
+  const dst = imgData.data;
+
+  for (let i=0;i<raw.length;i+=4){
+    const R=raw[i], G=raw[i+1], B=raw[i+2];
+    const elev=(R*256+G+B/256)-32768;
+    const [r,g,b]=colorFor(elev, emin, emax);
+    dst[i]=r; dst[i+1]=g; dst[i+2]=b; dst[i+3]=180;
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+}
+
+function recolorVisible(){
+  if (!locked){
+    const range=computeViewportRange();
+    if (range){
+      EMIN=range.min;
+      EMAX=range.max;
+      updateLegend();
+    }
+  }
+  for (const k of visibleTileKeys()) recolorTile(k, EMIN, EMAX);
+}
+
+let recolorTimer=null;
+function scheduleRecolor(){
+  if (recolorTimer) cancelAnimationFrame(recolorTimer);
+  recolorTimer=requestAnimationFrame(recolorVisible);
+}
+
+map.on('moveend zoomend', scheduleRecolor);
+scheduleRecolor();
 
 /* ================= ВЫСОТА ПО КЛИКУ ================= */
-function elevAtLatLng(latlng){ const z=map.getZoom(); const world=map.project(latlng,z); const tileX=Math.floor(world.x/256), tileY=Math.floor(world.y/256); const px=Math.floor(world.x)%256, py=Math.floor(world.y)%256; const key=`${z}/${tileX}/${tileY}`; const data=rawTiles.get(key); if(!data)return null; const i=(py*256+px)*4; const R=data[i],G=data[i+1],B=data[i+2]; return (R*256+G+B/256)-32768; }
-map.on('click', (e)=>{ const elev=elevAtLatLng(e.latlng); const m=L.marker(e.latlng).addTo(map); if(elev==null){ m.bindPopup('Высота недоступна: тайл ещё грузится.').openPopup(); return; } m.bindPopup(`<b>Высота:</b> ${elev.toFixed(1)} м<br>Шир.: ${e.latlng.lat.toFixed(6)}<br>Долг.: ${e.latlng.lng.toFixed(6)}`).openPopup(); });
+function elevAtLatLng(latlng){
+  const z=map.getZoom();
+  const world=map.project(latlng,z);
+  const tileX=Math.floor(world.x/256), tileY=Math.floor(world.y/256);
+  const px=Math.floor(world.x)%256, py=Math.floor(world.y)%256;
+  const key=`${z}/${tileX}/${tileY}`;
+  const data=rawTiles.get(key);
+  if(!data)return null;
+  const i=(py*256+px)*4;
+  const R=data[i],G=data[i+1],B=data[i+2];
+  return (R*256+G+B/256)-32768;
+}
+
+map.on('click', (e)=>{
+  const elev=elevAtLatLng(e.latlng);
+  const m=L.marker(e.latlng).addTo(map);
+
+  if(elev==null){
+    m.bindPopup('<b>Высота:</b> загрузка...').openPopup();
+    return;
+  }
+
+  m.bindPopup(`
+    <b>Высота:</b> ${elev.toFixed(1)} м<br>
+    <b>Координаты:</b><br>
+    ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}
+  `).openPopup();
+});
 
 /* ================= ЛЕГЕНДА ================= */
-function updateLegend(){ document.getElementById('range').textContent = `${Math.round(EMIN)} м  →  ${Math.round(EMAX)} м`; const ticks=document.getElementById('ticks'); const steps=10, stepVal=(EMAX-EMIN)/steps; ticks.innerHTML=''; for (let i=steps;i>=0;i--){ const v=Math.round(EMIN+stepVal*i); const div=document.createElement('div'); div.textContent=`${v} м`; ticks.appendChild(div);} }
+function updateLegend(){
+  document.getElementById('range').textContent =
+    `${Math.round(EMIN)} м → ${Math.round(EMAX)} м`;
+
+  const ticks=document.getElementById('ticks');
+  const steps=7, stepVal=(EMAX-EMIN)/steps;
+  ticks.innerHTML='';
+
+  for (let i=0;i<=steps;i++){
+    const v=Math.round(EMAX - stepVal*i); // Сверху вниз
+    const div=document.createElement('div');
+    div.textContent=`${v} м`;
+    ticks.appendChild(div);
+  }
+}
 updateLegend();
 
-/* ================= POI (Overpass) ================= */
+/* ================= OSM POI (Overpass) ================= */
 const POI_CFG = {
   peaks:       { color:'#d73027', label:'Пики',        filter:(t)=> t.natural==='peak' },
   viewpoints:  { color:'#7b3294', label:'Видовые',     filter:(t)=> t.tourism==='viewpoint' },
@@ -192,71 +565,385 @@ const POI_CFG = {
   ruins:       { color:'#b2182b', label:'Руины/замки', filter:(t)=> t.historic==='ruins' || t.historic==='castle' || t.historic==='fort' || t.historic==='archaeological_site' },
   towers:      { color:'#fdae61', label:'Башни',       filter:(t)=> t.man_made==='tower' }
 };
+
 const poiLayers = Object.fromEntries(Object.keys(POI_CFG).map(k=>[k, L.layerGroup()]));
-Object.values(poiLayers).forEach(g=>g.setZIndex && g.setZIndex(11));
+Object.values(poiLayers).forEach(g=>g.setZIndex && g.setZIndex(8));
+
 let poiEnabled = true;
+const loadingIndicator = document.getElementById('loadingIndicator');
 
-function bboxString(b){ return `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`; }
+function bboxString(b){
+  return `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
+}
+
 let poiReq = 0;
-async function loadPOI(){ if (!poiEnabled) return; const b = map.getBounds(); const bbox = bboxString(b);
-  const q = `[out:json][timeout:25];(node["natural"="peak"](${bbox});node["tourism"="viewpoint"](${bbox});node["natural"="spring"](${bbox});node["waterway"="waterfall"](${bbox});node["natural"="cave_entrance"](${bbox});node["historic"~"castle|ruins|fort|archaeological_site"](${bbox});node["man_made"="tower"](${bbox}););out body;`;
-  const id = ++poiReq; try{ const res = await fetch('https://overpass-api.de/api/interpreter', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'}, body: new URLSearchParams({ data: q }) }); const json = await res.json(); if (id !== poiReq) return; for (const k in poiLayers) poiLayers[k].clearLayers(); (json.elements||[]).forEach(el => { if (el.type !== 'node') return; const lat=el.lat, lon=el.lon, tags=el.tags||{}; for (const k in POI_CFG){ if (POI_CFG[k].filter(tags)){ L.circleMarker([lat,lon], { radius:5, weight:1, color:'#000', opacity:0.6, fillColor:POI_CFG[k].color, fillOpacity:0.95 }).bindPopup(`<b>${tags.name||POI_CFG[k].label}</b><br>${lat.toFixed(5)}, ${lon.toFixed(5)}`).addTo(poiLayers[k]); break; } } }); }catch(e){ console.warn('Overpass error', e); } }
-let poiTimer=null; function schedulePOI(){ if (!poiEnabled) return; if (poiTimer) clearTimeout(poiTimer); poiTimer = setTimeout(loadPOI, 600); }
-map.on('moveend zoomend', schedulePOI); schedulePOI();
+let poiLoadTimer = null;
 
-/* ================= КОНТРОЛЫ ================= */
-const ToggleCtrl = L.Control.extend({ onAdd: function(){ const div = L.DomUtil.create('div','ctrl-box'); div.innerHTML = `
-  <div class=\"grp\">
-    <b>База</b>
-    <div class=\"cols\">
-      <label><input type=\"radio\" name=\"base\" value=\"osm\" ${base==='osm'?'checked':''}> Карта</label>
-      <label><input type=\"radio\" name=\"base\" value=\"sat\" ${base==='sat'?'checked':''}> Спутник</label>
-      <label><input type=\"radio\" name=\"base\" value=\"topo\" ${base==='topo'?'checked':''}> Топо</label>
-    </div>
-  </div>
-  <div class=\"grp\">
-    <b>Оверлеи</b>
-    <div class=\"cols\">
-      <label><input type=\"checkbox\" id=\"relief-toggle\" checked> Рельеф (заливка)</label>
-      <label style=\"grid-column:span 2\">Прозрачность: <input type=\"range\" id=\"relief-opacity\" min=\"0\" max=\"1\" step=\"0.05\" value=\"0.67\" style=\"width:160px\"></label>
-      <label><input type=\"checkbox\" id=\"hill-toggle\"> Теневой рельеф</label>
-      <label><input type=\"checkbox\" id=\"trail-toggle\"> Тропы/маршруты</label>
-      <label><input type=\"checkbox\" id=\"land-toggle\"> Типы покрытий</label>
-    </div>
-  </div>
-  <div class=\"grp\">
-    <b>POI (точки интереса)</b>
-    <div class=\"cols\">
-      <label><input type=\"checkbox\" id=\"poi-master\" checked> Включить</label>
-      <label><input type=\"checkbox\" class=\"poi-cat\" data-k=\"peaks\" checked> Пики</label>
-      <label><input type=\"checkbox\" class=\"poi-cat\" data-k=\"viewpoints\" checked> Видовые</label>
-      <label><input type=\"checkbox\" class=\"poi-cat\" data-k=\"springs\" checked> Родники</label>
-      <label><input type=\"checkbox\" class=\"poi-cat\" data-k=\"waterfalls\" checked> Водопады</label>
-      <label><input type=\"checkbox\" class=\"poi-cat\" data-k=\"caves\" checked> Пещеры</label>
-      <label><input type=\"checkbox\" class=\"poi-cat\" data-k=\"ruins\" checked> Руины/замки</label>
-      <label><input type=\"checkbox\" class=\"poi-cat\" data-k=\"towers\" checked> Башни</label>
-    </div>
-  </div>
-  <div class=\"grp\">
-    <b>Диапазон</b>
-    <label><input type=\"checkbox\" id=\"lock-toggle\" ${locked? 'checked':''}> Фиксировать min/max</label>
-  </div>`; L.DomEvent.disableClickPropagation(div); return div; }});
+async function loadPOI(){
+  if (!poiEnabled) return;
+
+  const b = map.getBounds();
+  const bbox = bboxString(b);
+  const q = `[out:json][timeout:25];(
+    node["natural"="peak"](${bbox});
+    node["tourism"="viewpoint"](${bbox});
+    node["natural"="spring"](${bbox});
+    node["waterway"="waterfall"](${bbox});
+    node["natural"="cave_entrance"](${bbox});
+    node["historic"~"castle|ruins|fort|archaeological_site"](${bbox});
+    node["man_made"="tower"](${bbox});
+  );out body;`;
+
+  const id = ++poiReq;
+
+  // Показываем индикатор загрузки
+  loadingIndicator.classList.add('show');
+
+  try{
+    const res = await fetch('https://overpass-api.de/api/interpreter', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},
+      body: new URLSearchParams({ data: q })
+    });
+
+    const json = await res.json();
+
+    if (id !== poiReq) return; // Устарело
+
+    // Очищаем предыдущие
+    for (const k in poiLayers) poiLayers[k].clearLayers();
+
+    (json.elements||[]).forEach(el => {
+      if (el.type !== 'node') return;
+      const lat=el.lat, lon=el.lon, tags=el.tags||{};
+
+      for (const k in POI_CFG){
+        if (POI_CFG[k].filter(tags)){
+          L.circleMarker([lat,lon], {
+            radius:6, weight:2, color:'#fff', opacity:1,
+            fillColor:POI_CFG[k].color, fillOpacity:0.9
+          })
+          .bindPopup(`
+            <b>${tags.name||POI_CFG[k].label}</b><br>
+            ${POI_CFG[k].label}<br>
+            <small>${lat.toFixed(5)}, ${lon.toFixed(5)}</small>
+          `)
+          .addTo(poiLayers[k]);
+          break;
+        }
+      }
+    });
+  }catch(e){
+    console.warn('Overpass error', e);
+  } finally {
+    loadingIndicator.classList.remove('show');
+  }
+}
+
+function schedulePOI(){
+  if (!poiEnabled) return;
+  if (poiLoadTimer) clearTimeout(poiLoadTimer);
+  poiLoadTimer = setTimeout(loadPOI, 800);
+}
+
+map.on('moveend zoomend', schedulePOI);
+schedulePOI();
+
+/* ================= DESKTOP КОНТРОЛЫ ================= */
+const ToggleCtrl = L.Control.extend({
+  onAdd: function(){
+    const div = L.DomUtil.create('div','ctrl-box');
+    div.innerHTML = `
+      <div class="grp">
+        <b>Базовая карта</b>
+        <div class="cols">
+          <label><input type="radio" name="base" value="osm" ${base==='osm'?'checked':''}> Карта</label>
+          <label><input type="radio" name="base" value="sat" ${base==='sat'?'checked':''}> Спутник</label>
+          <label><input type="radio" name="base" value="topo" ${base==='topo'?'checked':''}> Топо</label>
+        </div>
+      </div>
+      <div class="grp">
+        <b>Слои рельефа</b>
+        <label><input type="checkbox" id="relief-toggle" checked> Цветная заливка</label>
+        <label><input type="checkbox" id="hill-toggle"> Теневой рельеф</label>
+      </div>
+      <div class="grp">
+        <b>Дополнительно</b>
+        <label><input type="checkbox" id="trail-toggle"> Тропы</label>
+        <label><input type="checkbox" id="land-toggle"> Покрытия</label>
+      </div>
+      <div class="grp">
+        <b>POI (точки интереса)</b>
+        <label><input type="checkbox" id="poi-master" checked> Показать все</label>
+        <div class="cols" style="margin-top:6px">
+          <label><input type="checkbox" class="poi-cat" data-k="peaks" checked> Пики</label>
+          <label><input type="checkbox" class="poi-cat" data-k="viewpoints" checked> Видовые</label>
+          <label><input type="checkbox" class="poi-cat" data-k="springs" checked> Родники</label>
+          <label><input type="checkbox" class="poi-cat" data-k="waterfalls" checked> Водопады</label>
+          <label><input type="checkbox" class="poi-cat" data-k="caves" checked> Пещеры</label>
+          <label><input type="checkbox" class="poi-cat" data-k="ruins" checked> Руины</label>
+          <label><input type="checkbox" class="poi-cat" data-k="towers" checked> Башни</label>
+        </div>
+      </div>
+      <div class="grp">
+        <b>Настройки</b>
+        <label><input type="checkbox" id="lock-toggle" ${locked? 'checked':''}> Фиксировать высоты</label>
+      </div>`;
+    L.DomEvent.disableClickPropagation(div);
+    return div;
+  }
+});
+
 map.addControl(new ToggleCtrl({ position: 'topleft' }));
 
-Array.from(document.querySelectorAll('input[name="base"]')).forEach(r => r.addEventListener('change', (e)=> setBase(e.target.value)));
+// Обработчики desktop контролов
+Array.from(document.querySelectorAll('input[name="base"]')).forEach(r =>
+  r.addEventListener('change', (e)=> setBase(e.target.value))
+);
 
-document.getElementById('relief-toggle').addEventListener('change', (e)=>{ reliefLayer.setOpacity(e.target.checked ? parseFloat(document.getElementById('relief-opacity').value) : 0); });
-document.getElementById('relief-opacity').addEventListener('input', (e)=>{ reliefLayer.setOpacity(parseFloat(e.target.value)); });
+document.getElementById('relief-toggle').addEventListener('change', (e)=>
+  reliefLayer.setOpacity(e.target.checked ? reliefCurrentOpacity : 0)
+);
 
-document.getElementById('hill-toggle').addEventListener('change', (e)=>{ if (e.target.checked) hillshade.addTo(map); else map.removeLayer(hillshade); });
-document.getElementById('trail-toggle').addEventListener('change', (e)=>{ if (e.target.checked) waymarked.addTo(map); else map.removeLayer(waymarked); });
-document.getElementById('land-toggle').addEventListener('change', (e)=>{ if (e.target.checked) landcover.addTo(map); else map.removeLayer(landcover); });
+document.getElementById('hill-toggle').addEventListener('change', (e)=> {
+  if (e.target.checked) hillshade.addTo(map);
+  else map.removeLayer(hillshade);
+});
 
-document.getElementById('poi-master').addEventListener('change', (e)=>{ poiEnabled = e.target.checked; if (poiEnabled){ schedulePOI(); for (const k in poiLayers) { const on = document.querySelector(`.poi-cat[data-k="${k}"]`).checked; if (on && !map.hasLayer(poiLayers[k])) poiLayers[k].addTo(map); } } else { for (const k in poiLayers) map.removeLayer(poiLayers[k]); } });
-Array.from(document.querySelectorAll('.poi-cat')).forEach(cb => cb.addEventListener('change', (e)=>{ const k = e.target.dataset.k; if (!k || !poiEnabled) return; if (e.target.checked) { if (!map.hasLayer(poiLayers[k])) poiLayers[k].addTo(map); } else { map.removeLayer(poiLayers[k]); } }));
-for (const k in poiLayers){ const on = document.querySelector(`.poi-cat[data-k="${k}"]`).checked; if (on) poiLayers[k].addTo(map); }
+document.getElementById('trail-toggle').addEventListener('change', (e)=> {
+  if (e.target.checked) waymarked.addTo(map);
+  else map.removeLayer(waymarked);
+});
 
-document.getElementById('lock-toggle').addEventListener('change', (e)=>{ locked = e.target.checked; scheduleRecolor(); });
+document.getElementById('land-toggle').addEventListener('change', (e)=> {
+  if (e.target.checked) landcover.addTo(map);
+  else map.removeLayer(landcover);
+});
+
+document.getElementById('poi-master').addEventListener('change', (e)=>{
+  poiEnabled = e.target.checked;
+  if (poiEnabled){
+    schedulePOI();
+    for (const k in poiLayers) {
+      const on = document.querySelector(`.poi-cat[data-k="${k}"]`).checked;
+      if (on && !map.hasLayer(poiLayers[k])) poiLayers[k].addTo(map);
+    }
+  } else {
+    for (const k in poiLayers) map.removeLayer(poiLayers[k]);
+  }
+});
+
+Array.from(document.querySelectorAll('.poi-cat')).forEach(cb =>
+  cb.addEventListener('change', (e)=>{
+    const k = e.target.dataset.k;
+    if (!k || !poiEnabled) return;
+    if (e.target.checked) {
+      if (!map.hasLayer(poiLayers[k])) poiLayers[k].addTo(map);
+    } else {
+      map.removeLayer(poiLayers[k]);
+    }
+  })
+);
+
+// Изначально включаем все POI категории
+for (const k in poiLayers){
+  const on = document.querySelector(`.poi-cat[data-k="${k}"]`).checked;
+  if (on) poiLayers[k].addTo(map);
+}
+
+document.getElementById('lock-toggle').addEventListener('change', (e)=>{
+  locked = e.target.checked;
+  scheduleRecolor();
+});
+
+/* ================= МОБИЛЬНЫЙ UI ================= */
+(function(){
+  const sheet = document.getElementById('sheet');
+  const btnLayers = document.getElementById('btnLayers');
+  const btnRelief = document.getElementById('btnRelief');
+  const btnPOI = document.getElementById('btnPOI');
+  const btnMore = document.getElementById('btnMore');
+  const geoFab = document.getElementById('geoFab');
+  const opacityRange = document.getElementById('opacityRange');
+  const opacityValue = document.getElementById('opacityValue');
+  const sheetHandle = document.getElementById('sheetHandle');
+
+  // Предотвращаем взокрутку карты при взаимодействии с элементами
+  [sheet, document.getElementById('bottomBar')].forEach(el => {
+    if (el) L.DomEvent.disableClickPropagation(el);
+  });
+
+  function setActive(el, on){
+    if (el) el.classList[on? 'add':'remove']('active');
+  }
+
+  let currentSheet = null;
+
+  function openSheet(type){
+    if (currentSheet === type) {
+      closeSheet();
+      return;
+    }
+    sheet.classList.add('open');
+    currentSheet = type;
+  }
+
+  function closeSheet(){
+    sheet.classList.remove('open');
+    currentSheet = null;
+  }
+
+  // Свайп вниз для закрытия
+  let touchStartY = 0;
+  sheetHandle.addEventListener('touchstart', (e) => {
+    touchStartY = e.touches[0].clientY;
+  });
+
+  sheetHandle.addEventListener('touchmove', (e) => {
+    const touchY = e.touches[0].clientY;
+    const diff = touchY - touchStartY;
+    if (diff > 50) closeSheet();
+  });
+
+  sheetHandle.addEventListener('click', closeSheet);
+
+  // Кнопка "Слои" - переключение базы
+  const bases = ['osm','sat','topo'];
+  const baseNames = {osm:'Карта', sat:'Спутник', topo:'Топо'};
+
+  btnLayers && btnLayers.addEventListener('click', ()=>{
+    const i = bases.indexOf(base);
+    base = bases[(i+1)%bases.length];
+    setBase(base);
+    const radios = document.querySelectorAll('input[name="baseMobile"]');
+    radios.forEach(r => r.checked = (r.value === base));
+    if (btnLayers.querySelector('.label')) {
+      btnLayers.querySelector('.label').textContent = baseNames[base];
+    }
+  });
+
+  // Кнопка "Рельеф"
+  btnRelief && btnRelief.addEventListener('click', ()=>{
+    const isOn = reliefLayer.options.opacity > 0;
+    if (isOn){
+      reliefLayer.setOpacity(0);
+      setActive(btnRelief, false);
+    } else {
+      reliefLayer.setOpacity(reliefCurrentOpacity);
+      setActive(btnRelief, true);
+    }
+  });
+
+  // Кнопка "Места" (POI)
+  btnPOI && btnPOI.addEventListener('click', ()=>{
+    const master = document.getElementById('poi-master');
+    const now = !poiEnabled;
+    poiEnabled = now;
+    if (master) master.checked = now;
+
+    if (now){
+      schedulePOI();
+      for (const k in poiLayers) {
+        const cb = document.querySelector(`.poi-cat[data-k="${k}"]`);
+        if (cb && cb.checked && !map.hasLayer(poiLayers[k])) {
+          poiLayers[k].addTo(map);
+        }
+      }
+    } else {
+      for (const k in poiLayers) map.removeLayer(poiLayers[k]);
+    }
+
+    setActive(btnPOI, now);
+  });
+
+  // Кнопка "Еще" - открывает шторку
+  btnMore && btnMore.addEventListener('click', ()=> openSheet('settings'));
+
+  // Прозрачность рельефа
+  opacityRange && opacityRange.addEventListener('input', (e)=>{
+    reliefCurrentOpacity = parseFloat(e.target.value);
+    if (opacityValue) {
+      opacityValue.textContent = Math.round(reliefCurrentOpacity * 100) + '%';
+    }
+    if (reliefLayer.options.opacity > 0) {
+      reliefLayer.setOpacity(reliefCurrentOpacity);
+    }
+  });
+
+  // Синхронизация радиокнопок базы в шторке
+  Array.from(document.querySelectorAll('input[name="baseMobile"]')).forEach(r =>
+    r.addEventListener('change', (e)=> {
+      setBase(e.target.value);
+      if (btnLayers.querySelector('.label')) {
+        btnLayers.querySelector('.label').textContent = baseNames[e.target.value];
+      }
+    })
+  );
+
+  // Чекбоксы в шторке
+  const chkHill = document.getElementById('hillMobile');
+  const chkLand = document.getElementById('landMobile');
+  const chkTrails = document.getElementById('trailsMobile');
+  const chkLock = document.getElementById('lockMobile');
+  const chkLegend = document.getElementById('legendToggleMobile');
+
+  chkHill && chkHill.addEventListener('change', (e)=>{
+    if (e.target.checked) hillshade.addTo(map);
+    else map.removeLayer(hillshade);
+  });
+
+  chkLand && chkLand.addEventListener('change', (e)=>{
+    if (e.target.checked) landcover.addTo(map);
+    else map.removeLayer(landcover);
+  });
+
+  chkTrails && chkTrails.addEventListener('change', (e)=>{
+    if (e.target.checked) waymarked.addTo(map);
+    else map.removeLayer(waymarked);
+  });
+
+  chkLock && chkLock.addEventListener('change', (e)=>{
+    locked = e.target.checked;
+    const desktopLock = document.getElementById('lock-toggle');
+    if (desktopLock) desktopLock.checked = locked;
+    scheduleRecolor();
+  });
+
+  chkLegend && chkLegend.addEventListener('change', (e)=>{
+    const lg = document.getElementById('legend');
+    if (lg) lg.classList[e.target.checked ? 'remove' : 'add']('hidden');
+  });
+
+  // Геолокация
+  let youMarker, youCircle;
+
+  geoFab && geoFab.addEventListener('click', ()=>{
+    geoFab.style.transform = 'scale(0.9)';
+    setTimeout(() => geoFab.style.transform = '', 150);
+    map.locate({ setView:true, maxZoom: 16, enableHighAccuracy: true });
+  });
+
+  map.on('locationfound', (e)=>{
+    if (youMarker) map.removeLayer(youMarker);
+    if (youCircle) map.removeLayer(youCircle);
+    youMarker = L.marker(e.latlng).addTo(map).bindPopup('Вы здесь').openPopup();
+    youCircle = L.circle(e.latlng, {
+      radius: e.accuracy,
+      color:'#2563eb',
+      weight:2,
+      fillOpacity:0.1
+    }).addTo(map);
+  });
+
+  map.on('locationerror', (e)=>{
+    alert('Геолокация недоступна: ' + (e.message || 'проверьте разрешения браузера'));
+  });
+
+  // Установка начальных значений
+  if (opacityValue) {
+    opacityValue.textContent = Math.round(reliefCurrentOpacity * 100) + '%';
+  }
+})();
 </script>
 </body>
 </html>
